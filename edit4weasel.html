@@ -1,0 +1,803 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rime/小狼毫 可视编辑</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/js-yaml/4.1.0/js-yaml.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@simonwep/pickr/dist/themes/monolith.min.css"/>
+    <script src="https://cdn.jsdelivr.net/npm/@simonwep/pickr/dist/pickr.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --font-face: 'Microsoft YaHei';
+            --c-back: rgba(29, 29, 29, 0.94);
+            --l-corner-radius: 12px;
+        }
+        body { font-family: 'Noto Sans SC', sans-serif; background: #0f172a; color: #e2e8f0; overflow: hidden; font-size: 24px; } 
+        .mono { font-family: 'Consolas', 'Monaco', monospace; }
+        .preview-backdrop { transition: background-image 0.3s ease; background-size: cover; background-position: center; }
+        .preview-backdrop.dark { background-image: url("http://i0.hdslb.com/bfs/new_dyn/d0c80f498754f516a912ab43c7e6749282516644.jpg"); }
+        .preview-backdrop.light { background-image: url("http://i0.hdslb.com/bfs/new_dyn/46693a836e506935fc51c2c13e1ea9a782516644.jpg"); }
+        
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+        input[type=range] { -webkit-appearance: none; background: #1e293b; border-radius: 99px; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 28px; width: 28px; border-radius: 99px; background: #3b82f6; cursor: pointer; }
+        
+        .tab-btn { transition: all 0.2s; border-bottom: 2px solid transparent; font-size: 14px !important; } 
+        .tab-btn.active { color: #3b82f6; border-color: #3b82f6; background: rgba(59, 130, 246, 0.05); }
+        .pcr-app { background: #1e293b !important; border: 1px solid #334155 !important; border-radius: 8px !important; box-shadow: 0 10px 25px rgba(0,0,0,0.5) !important; font-family: 'Noto Sans SC', sans-serif;}
+        .pcr-interaction .pcr-save, .pcr-interaction .pcr-clear { background: #3b82f6 !important; }
+        .pcr-interaction .pcr-cancel { background: #ef4444 !important; }
+        
+        .param-group-title { font-size: 20px; font-weight: 700; color: #ebeff3; margin-top: 1.5rem; margin-bottom: 0.75rem; border-bottom: 1px solid #334155; padding-bottom: 4px; }
+        .color-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; background: rgba(30, 41, 59, 0.3); border-radius: 8px; margin-bottom: 4px; transition: background 0.2s; }
+        .color-row:hover { background: rgba(59, 130, 246, 0.1); }
+        .color-label { font-size: 14px; color: #94a3b8; }
+        .color-swatch { width: 48px; height: 28px; border-radius: 6px; border: 2px solid #334155; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+        
+        #schemeList { overflow-x: auto; scrollbar-width: none; -ms-overflow-style: none; }
+        #schemeList::-webkit-scrollbar { display: none; }
+        .scroll-indicator { position: absolute; top: 0; bottom: 0; width: 24px; display: flex; align-items: center; justify-content: center; pointer-events: none; opacity: 0.6; font-size: 20px; color: #94a3b8; z-index: 10; transition: opacity 0.2s; right: 6.5rem; }
+        .scroll-indicator.hidden { opacity: 0; }
+
+        .drag-over {
+            border-color: #ff0000 !important;
+            border-style: dashed !important;
+            background-color: #f00000 !important;
+            transform: scale(1.05);
+        }
+
+        .rime-window {
+            background: var(--c-back_color);
+            border: var(--l-border_width) solid var(--c-border_color);
+            border-radius: var(--l-corner-radius);
+            padding: var(--l-margin_y) var(--l-margin_x);
+            box-shadow: var(--l-shadow_offset_x) var(--l-shadow_offset_y) var(--l-shadow_radius) var(--c-shadow_color);
+            font-family: var(--font-face);
+            min-width: var(--l-min_width);
+            transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            transform-origin: center center;
+        }
+        .rime-preedit {
+            background: var(--c-hilited_back_color);
+            color: var(--c-hilited_text_color);
+            border-radius: var(--l-round_corner);
+            padding: 4px 12px;
+            font-size: var(--font-point);
+            margin-bottom: var(--l-spacing);
+            box-shadow: var(--l-shadow_offset_x) var(--l-shadow_offset_y) var(--l-shadow_radius) var(--c-hilited_shadow_color);
+            width: fit-content;
+        }
+        .rime-cand-list { display: flex; }
+        .rime-cand-list.horizontal { flex-direction: row; }
+        .rime-cand-list.vertical { flex-direction: column; }
+        
+        .rime-cand-item {
+            display: flex;
+            align-items: center;
+            border: var(--l-border_width) solid transparent;
+            border-radius: var(--l-round_corner);
+        }
+        .rime-cand-list.horizontal .rime-cand-item { margin: 0 var(--l-cand_margin); }
+        .rime-cand-list.vertical .rime-cand-item { margin: var(--l-cand_margin) 0; }
+
+        .rime-cand-item.hilited {
+            background: var(--c-hilited_candidate_back_color);
+            border-color: var(--c-hilited_candidate_border_color);
+            box-shadow: var(--l-shadow_offset_x) var(--l-shadow_offset_y) var(--l-shadow_radius) var(--c-hilited_candidate_shadow_color);
+        }
+        .rime-cand-item.normal {
+            background: var(--c-candidate_back_color);
+            box-shadow: var(--l-shadow_offset_x) var(--l-shadow_offset_y) var(--l-shadow_radius) var(--c-candidate_shadow_color);
+        }
+        
+        .rime-mark {
+            width: 6px;
+            height: 0.8em;              
+            border-radius: 3px;
+            margin-right: 1px;
+            flex-shrink: 0;
+            background: transparent;
+            font-size: var(--font-point); 
+            line-height: 1;     
+            display: flex;
+            align-items: center; 
+            justify-content: center;
+        }
+        .rime-cand-item.hilited .rime-mark { background: var(--c-hilited_mark_color); }
+        
+        .rime-label { font-size: var(--label-font-point); margin-right: 6px; }
+        .rime-cand-item.hilited .rime-label { color: var(--c-hilited_label_color); }
+        .rime-cand-item.normal .rime-label { color: var(--c-label_color); }
+
+        .rime-text { font-size: var(--font-point); }
+        .rime-cand-item.hilited .rime-text { color: var(--c-hilited_candidate_text_color); }
+        .rime-cand-item.normal .rime-text { color: var(--c-candidate_text_color); }
+
+        .rime-comment { font-size: var(--comment-font-point); opacity: 0.8; margin-left: 8px; }
+        .rime-cand-item.hilited .rime-comment { color: var(--c-hilited_comment_text_color); }
+        .rime-cand-item.normal .rime-comment { color: var(--c-comment_text_color); }
+
+    </style>
+</head>
+<body class="h-screen flex flex-col">
+
+    <header class="border-b border-slate-800 bg-slate-900/90 px-6 py-3 flex justify-between items-center backdrop-blur-md shrink-0 text-white z-50">
+        <div class="flex items-center gap-4">
+             <a href="https://space.bilibili.com/82516644" target="_blank" class="flex items-center gap-3 bg-[#fb7299] hover:bg-[#ff85a5] text-white pl-2 pr-4 py-1 rounded-full text-lg font-bold transition-all shadow-lg hover:-translate-y-0.5 group">
+                <div class="bg-white/20 p-0.5 rounded-full"><img src="data:image/png;base64,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" class="w-6 h-6 object-cover rounded-full" alt="icon"></div>
+                <div class="flex flex-col items-start"><span class="leading-none">hero20072</span></div>
+            </a>
+            <button id="scaleToggleBtn" class="px-4 py-2 rounded-full text-lg font-medium bg-indigo-600/70 hover:bg-indigo-500/70 transition-all cursor-pointer">🔎 2倍缩放</button>
+            <button id="toggleCommentBtn" class="px-4 py-2 rounded-full text-lg font-medium bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700 transition-all cursor-pointer">📝 注解文字</button>
+        </div>
+        <div class="flex gap-3">
+            <label class="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-lg transition-all cursor-pointer border border-slate-700 text-slate-300">
+                导入\拖入
+                <input type="file" class="hidden" id="importFile" accept=".yaml,.txt,.yml">
+            </label>
+            <button id="exportBtn" class="px-5 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-lg font-medium shadow-lg transition-all">
+                导出 .yaml
+            </button>
+        </div>
+    </header>
+
+    <div class="flex-1 flex overflow-hidden">
+        <aside class="w-[420px] border-r border-slate-800 flex flex-col bg-slate-900/50 relative z-20">
+            <div class="p-4 space-y-3 border-b border-slate-800/50">
+                <div class="flex items-center gap-2 overflow-hidden relative">  
+                    <div id="schemeList" class="flex-1 flex gap-2 overflow-x-auto pb-1 select-none pr-6 items-center"></div>  
+                    <button id="addSchemeBtn" class="px-4 py-2 rounded-full text-lg font-medium bg-pink-600/70 hover:bg-pink-500/70 transition-all cursor-pointer shrink-0">+</button>
+                </div>
+                <input type="text" id="testCandidates" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-xs text-slate-300 outline-none focus:border-blue-500/50" value="方案名, 双击改名, 长按删除">
+                <div class="space-y-1">
+                    <label class="text-lg text-slate-400">字体设置：在输入框内自行修改字体名称</label>
+                    <div class="grid grid-cols-2 gap-1">
+                        <input type="text" id="fontFaceInput" data-path="style.font_face" class="bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-xs mono" placeholder="例如 Microsoft YaHei">
+                        <button onclick="document.getElementById('fontUpload').click()" class="bg-slate-800 py-1.5 rounded text-sm text-slate-300 hover:bg-slate-700 transition-colors">上传预览字体</button>
+                        <input type="file" id="fontUpload" class="hidden" accept=".ttf,.otf,.woff,.woff2">
+                    </div>
+                </div>
+            </div>
+            <div class="flex border-b border-slate-800 shrink-0">
+                <button data-tab="layout" class="tab-btn active flex-1 py-2 font-bold uppercase tracking-tighter">布局 & 样式</button>
+                <button data-tab="colors" class="tab-btn flex-1 py-2 font-bold uppercase tracking-tighter text-slate-500">色彩管理</button>
+            </div>
+            <div class="flex-1 overflow-y-auto p-4 scroll-smooth">
+                <div id="page-layout" class="space-y-4"></div>
+                <div id="page-colors" class="hidden space-y-3"></div>
+            </div>
+        </aside>
+
+        <section class="flex-1 flex flex-col relative bg-black overflow-hidden z-10">
+            <div id="previewBackdrop" class="preview-backdrop dark absolute inset-0 z-0"></div>
+ 
+            <div class="absolute top-4 right-4 z-50 flex items-center gap-4 bg-slate-600/50 border border-slate-700/50 backdrop-blur-sm rounded-full p-2 text-white shadow-xl">
+                <button data-bg="light" class="bg-control-btn px-4 py-2 rounded-full text-lg font-medium bg-teal-600/70 hover:bg-teal-500 transition-all cursor-pointer">🌼 亮色</button>
+                <button data-bg="dark" class="bg-control-btn px-4 py-2 rounded-full text-lg font-medium bg-indigo-600/70 hover:bg-indigo-500 transition-all cursor-pointer">🌙 暗色</button>
+                <button id="myBgBtn" class="px-4 py-2 rounded-full text-lg font-medium bg-gray-500/70 hover:bg-gray-400/70 transition-all cursor-pointer">👨🏻‍🦲 我的</button>
+                <input type="file" id="bgUpload" class="hidden" accept="image/*">
+                <button onclick="document.getElementById('bgUpload').click()" class="px-4 py-2 rounded-full text-lg font-medium bg-pink-600/70 hover:bg-pink-700/50 transition-all cursor-pointer">📁 上传</button>
+            </div>
+
+            <div class="flex-1 flex items-center justify-center p-20 z-10 text-white relative">
+                <div id="candidateWindow" class="rime-window" style="transform: scale(2);">
+                    <div class="rime-preedit">pinyin</div>
+                    <div id="candidateList" class="rime-cand-list horizontal"></div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <style id="dynamic-font"></style>
+
+    <script>
+        const state = {
+            config_version: "0.25", 
+            app_options: { "cmd.exe": { ascii_mode: true }, "conhost.exe": { ascii_mode: true } },
+            show_notifications: true, show_notifications_time: 1200, global_ascii: false,
+            style: {
+                color_scheme: "default", color_scheme_dark: "", 
+                font_face: "Microsoft YaHei", label_font_face: "Microsoft YaHei", comment_font_face: "Microsoft YaHei", 
+                font_point: 24, label_font_point: 24, comment_font_point: 14,
+                inline_preedit: false, preedit_type: "composition", fullscreen: false, horizontal: false,
+                vertical_text: false, vertical_text_left_to_right: false, vertical_text_with_wrap: false, vertical_auto_reverse: false, 
+                label_format: "%s.", mark_text: "", ascii_tip_follow_cursor: false, enhanced_position: false, display_tray_icon: false, 
+                antialias_mode: "default", candidate_abbreviate_length: 0, hover_type: "none", paging_on_scroll: false, click_to_capture: false,
+                layout: {
+                    baseline: 0, linespacing: 0, align_type: "center", max_height: 0, max_width: 0, min_height: 0, min_width: 10, 
+                    border_width: 1, margin_x: 12, margin_y: 12, spacing: 6, candidate_spacing: 10, hilite_spacing: 4, 
+                    shadow_radius: 12, shadow_offset_x: 4, shadow_offset_y: 4, corner_radius: 12, round_corner: 12
+                }
+            },
+            preset_color_schemes: {
+                default: {
+                    name: "示例", author: "无",
+                    back_color: 0xF01D1D1D, border_color: 0xFF2AF349, text_color: 0xFF0404EB, comment_text_color: 0xFFD130D2,
+                    label_color: 0xFFEBFF01, shadow_color: 0xC9EE28EF, hilited_text_color: 0xFF2C2CA2, hilited_back_color: 0xFF54433A,
+                    hilited_shadow_color: 0xC93912C5, hilited_candidate_text_color: 0xFF6363C2, hilited_candidate_back_color: 0xFFE17841,
+                    hilited_candidate_shadow_color: 0xCC96DE14, hilited_candidate_border_color: 0xD92CCCC1, hilited_label_color: 0xFF00FFF2,
+                    hilited_mark_color: 0xFFFFCAAC, hilited_comment_text_color: 0xFF39FF00, candidate_text_color: 0xFFEEEEEE,
+                    candidate_back_color: 0x966C6A06, candidate_shadow_color: 0xD92CCCC1
+                }
+            }
+        };
+
+        const layoutMeta = [
+            { group: "字体与文本", key: 'font_point', label: '主候选字号', type: 'slider', min: 1, max: 72, path: 'style.font_point' }, 
+                { key: 'label_font_point', label: '标签字号', type: 'slider', min: 0, max: 72, path: 'style.label_font_point' }, 
+                { key: 'comment_font_point', label: '注解字号', type: 'slider', min: 0, max: 72, path: 'style.comment_font_point' }, 
+                { key: 'label_format', label: '标签格式（%s- 😄 ✿ 留空等均可）', type: 'text' , placeholder: '填入：%s. 或 %s- 😄 ✿ 留空等 ', path: 'style.label_format' },
+                { key: 'mark_text', label: '标记格式', type: 'text', placeholder: '留空，或任意内容', path: 'style.mark_text' }, 
+            { group: "圆角与阴影", key: 'border_width', label: '边框宽度', type: 'slider', min: 0, max: 10, path: 'style.layout.border_width' }, 
+                { key: 'corner_radius', label: '窗口圆角', type: 'slider', min: 0, max: 80, path: 'style.layout.corner_radius' }, 
+                { key: 'round_corner', label: '高亮块圆角', type: 'slider', min: 0, max: 30, path: 'style.layout.round_corner' }, 
+                { key: 'shadow_radius', label: '阴影半径', type: 'slider', min: 0, max: 100, path: 'style.layout.shadow_radius' }, 
+                { key: 'shadow_offset_x', label: '阴影偏移 X', type: 'slider', min: -50, max: 50, path: 'style.layout.shadow_offset_x' }, 
+                { key: 'shadow_offset_y', label: '阴影偏移 Y', type: 'slider', min: -50, max: 50, path: 'style.layout.shadow_offset_y' },
+            { group: "尺寸与间距", key: 'margin_x', label: '左右边距', type: 'slider', min: 0, max: 50, path: 'style.layout.margin_x' }, 
+                { key: 'margin_y', label: '上下边距', type: 'slider', min: 0, max: 50, path: 'style.layout.margin_y' }, 
+                { key: 'spacing', label: '编码/候选间距', type: 'slider', min: 0, max: 50, path: 'style.layout.spacing' }, 
+                { key: 'candidate_spacing', label: '候选项间距', type: 'slider', min: 0, max: 50, path: 'style.layout.candidate_spacing' },
+                { key: 'min_width', label: '最小宽度', type: 'slider', min: 0, max: 500, path: 'style.layout.min_width' }, 
+                { key: 'min_height', label: '最小高度', type: 'slider', min: 0, max: 500, path: 'style.layout.min_height' }, 
+                { key: 'max_width', label: '最大宽度 (0=不限)', type: 'slider', min: 0, max: 1200, path: 'style.layout.max_width' }, 
+                { key: 'max_height', label: '最大高度 (0=不限)', type: 'slider', min: 0, max: 800, path: 'style.layout.max_height' },
+            { group: "全局设置", key: 'horizontal', label: '候选项横排', type: 'checkbox', path: 'style.horizontal' }, 
+                { key: 'show_notifications', label: '显示状态通知', type: 'checkbox', path: 'show_notifications' }, 
+                { key: 'global_ascii', label: '全局西文模式', type: 'checkbox', path: 'global_ascii' }, 
+                { key: 'show_notifications_time', label: '通知显示时长(ms)', type: 'slider', min: 200, max: 5000, path: 'show_notifications_time' },
+                { key: 'antialias_mode', label: '抗锯齿模式', type: 'select', options: ['default', 'force_dword', 'cleartype', 'grayscale', 'aliased'], path: 'style.antialias_mode' }, 
+                { key: 'hover_type', label: '鼠标悬停效果', type: 'select', options: ['none', 'hilite', 'semi_hilite'], path: 'style.hover_type' },
+                { type: 'separator' }, 
+                { key: 'inline_preedit', label: '行内预编辑', type: 'checkbox', path: 'style.inline_preedit' }, 
+                { key: 'preedit_type', label: '预编辑内容', type: 'select', options: ['composition', 'preview', 'preview_all'], path: 'style.preedit_type' }, 
+            
+            
+            
+        ];
+        
+        const colorMeta = [
+            { group: "方案信息", key: 'author', label: '作者', type: 'text' },
+            { group: "基础颜色", key: 'back_color', label: '窗口背景' }, { key: 'border_color', label: '窗口边框' }, { key: 'shadow_color', label: '窗口阴影' }, { key: 'text_color', label: '默认文字' },                     
+            { group: "编码区 (预编辑)", key: 'hilited_text_color', label: '编码文字' }, { key: 'hilited_back_color', label: '编码背景' }, { key: 'hilited_shadow_color', label: '编码阴影' },                            
+            { group: "候选项 (已选中)", key: 'hilited_candidate_text_color', label: '选中文字' }, 
+                { key: 'hilited_candidate_back_color', label: '选中背景' }, 
+                { key: 'hilited_candidate_shadow_color', label: '高亮候选阴影' },
+                { key: 'hilited_label_color', label: '选中序号' }, 
+                { key: 'hilited_comment_text_color', label: '选中注解' }, 
+                { key: 'hilited_mark_color', label: '选中标记' }, 
+                { key: 'hilited_candidate_border_color', label: '选中边框' }, 
+            { group: "候选项 (未选中)", key: 'candidate_text_color', label: '候选文字' }, { key: 'candidate_back_color', label: '候选背景' }, { key: 'candidate_shadow_color', label: '候选阴影' },
+            { key: 'label_color', label: '序号颜色' }, { key: 'comment_text_color', label: '注解颜色' }
+        ];
+
+        const isObject = item => item && typeof item === 'object' && !Array.isArray(item);
+        const deepMerge = (target, source) => {
+            if (isObject(target) && isObject(source)) {
+                for (const key in source) {
+                    if (isObject(source[key])) {
+                        if (!target[key]) Object.assign(target, { [key]: {} });
+                        deepMerge(target[key], source[key]);
+                    } else {
+                        Object.assign(target, { [key]: source[key] });
+                    }
+                }
+            }
+            return target;
+        };
+        const getByPath = (obj, path) => path.split('.').reduce((acc, part) => acc && acc[part], obj);
+        const setByPath = (obj, path, value) => {
+            const parts = path.split('.');
+            const last = parts.pop();
+            const target = parts.reduce((acc, part) => acc[part] = acc[part] || {}, obj);
+            target[last] = value;
+        };
+        const escapeHTML = str => {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        };
+
+        const rimeColorToRgbaArray = val => {
+            let num = typeof val === 'string' && val.toLowerCase().startsWith('0x') ? parseInt(val, 16) : Number(val);
+            if (isNaN(num)) num = 0xFF000000;
+            return [num & 0xFF, (num >>> 8) & 0xFF, (num >>> 16) & 0xFF, ((num >>> 24) & 0xFF) / 255];
+        };
+        const rimeColorToCss = val => {
+            const [r, g, b, a] = rimeColorToRgbaArray(val);
+            return `rgba(${r}, ${g}, ${b}, ${a})`;
+        };
+        const rgbaArrayToRimeColor = ([r, g, b, a]) => {
+            return ((Math.round(a * 255) << 24) | (Math.round(b) << 16) | (Math.round(g) << 8) | Math.round(r)) >>> 0;
+        };
+        const formatRimeColorHex = num => "0x" + (num >>> 0).toString(16).toUpperCase().padStart(8, '0');
+
+        let currentScale = 2;
+        let previewShowComment = false;
+        let editingSchemeId = null;
+        let currentPickr = null;
+        let userUploadedBgUrl = null;
+
+        function renderPanels() {
+            document.getElementById('fontFaceInput').value = state.style.font_face;
+            
+            const layoutDiv = document.getElementById('page-layout');
+            let layoutHtml = '', currentGroup = null;
+
+            layoutMeta.forEach(item => {
+                if (item.group && item.group !== currentGroup) {
+                    if (currentGroup) layoutHtml += `</div>`; 
+                    currentGroup = item.group;
+                    layoutHtml += `
+                        <button class="w-full flex items-center gap-2 text-left p-3 rounded-lg font-bold text-2xl text-slate-300 transition-all hover:bg-slate-700/50 toggle-group-btn" data-target="group-${currentGroup}">
+                            <span class="w-6 emoji">😶</span><span>${currentGroup}</span>
+                        </button>
+                        <div id="group-${currentGroup}" class="hidden space-y-4 pl-4 pt-2 border-l-2 border-slate-700/50 ml-3">`;
+                }
+                if (item.type === 'separator') {
+                    layoutHtml += `<div class="border-t border-slate-700/50 my-4"></div>`; return;
+                }
+                
+                const val = getByPath(state, item.path);
+                switch(item.type) {
+                    case 'checkbox': 
+                        layoutHtml += `<label class="flex items-center justify-between text-lg text-slate-300 bg-slate-800/20 p-3 rounded-md cursor-pointer"><span class="font-medium">${item.label}</span><input type="checkbox" data-path="${item.path}" ${val ? 'checked' : ''}></label>`; 
+                        break;
+                    case 'text':
+                        layoutHtml += `<div class="space-y-1"><label class="text-lg text-slate-400">${item.label}</label><input type="text" value="${escapeHTML(val||'')}" placeholder="${item.placeholder||''}" data-path="${item.path}" class="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-lg"></div>`;
+                        break;
+                    case 'select': 
+                        layoutHtml += `<div class="space-y-1 flex justify-between items-center"><label class="text-lg text-slate-400">${item.label}</label><select data-path="${item.path}" class="w-48 bg-slate-950 border border-slate-700 rounded px-3 py-2 text-lg">${item.options.map(o => `<option value="${o}" ${val === o ? 'selected' : ''}>${o}</option>`).join('')}</select></div>`;
+                        break;
+                    case 'slider': 
+                        layoutHtml += `<div class="space-y-2"><div class="flex justify-between items-center"><label class="text-lg text-slate-400 font-medium">${item.label}</label><span class="text-lg text-blue-500 font-mono font-bold slider-val">${val}</span></div><input type="range" min="${item.min}" max="${item.max}" value="${val}" data-path="${item.path}" class="w-full h-1"></div>`; 
+                        break;
+                }
+            });
+            if (currentGroup) layoutHtml += `</div>`;
+            layoutDiv.innerHTML = layoutHtml;
+
+            const colorDiv = document.getElementById('page-colors');
+            let colorHtml = ''; currentGroup = null;
+            const scheme = state.preset_color_schemes[state.style.color_scheme] || {};
+
+            colorMeta.forEach(item => {
+                if (item.group && item.group !== currentGroup) {
+                    if (currentGroup) colorHtml += `</div>`; 
+                    currentGroup = item.group;
+                    colorHtml += `<div class="param-group-title">${currentGroup}</div><div class="space-y-1">`;
+                }
+                if (item.type === 'text') {
+                    colorHtml += `<div class="color-row"><label class="color-label">${item.label}</label><input type="text" data-colorkey="${item.key}" value="${escapeHTML(scheme[item.key] || '')}" class="bg-slate-950 border border-slate-700 rounded px-2 py-1 text-lg w-32 focus:border-blue-500 outline-none"></div>`;
+                } else {
+                    const cssColor = rimeColorToCss(scheme[item.key] || 0);
+                    colorHtml += `<div class="color-row py-2"><label class="color-label text-lg">${item.label}</label><div class="color-swatch flex-shrink-0 w-24 h-8" style="background: ${cssColor};" data-pickerkey="${item.key}"></div></div>`;
+                }
+            });
+            if (currentGroup) colorHtml += `</div>`;
+            colorDiv.innerHTML = colorHtml;
+
+            renderSchemeList();
+        }
+
+        function updateScrollIndicator() {
+            const list = document.getElementById('schemeList');
+            const indicator = document.getElementById('scrollIndicator');
+            if (!list || !indicator) return;
+
+            const isOverflowing = list.scrollWidth > list.clientWidth;
+            const isScrolledToEnd = list.scrollLeft + list.clientWidth >= list.scrollWidth - 2;
+            
+            indicator.classList.toggle('hidden', !isOverflowing || isScrolledToEnd);
+        }
+
+
+        function renderSchemeList() {
+            const list = document.getElementById('schemeList');
+            const activeId = state.style.color_scheme;
+            list.innerHTML = '';
+            
+            Object.keys(state.preset_color_schemes).forEach(id => {
+                const name = state.preset_color_schemes[id].name || id;
+                if (editingSchemeId === id) {
+                    const input = document.createElement('input');
+                    input.type = 'text'; input.value = name;
+                    input.className = "px-4 py-1.5 rounded-full text-lg bg-slate-800 text-white border border-blue-500 outline-none w-32 text-center";
+                    input.onblur = () => { finishEditScheme(id, input.value); };
+                    input.onkeydown = (e) => { if(e.key === 'Enter') input.blur(); };
+                    list.appendChild(input);
+                    setTimeout(() => input.focus(), 10);
+                } else {
+                    const div = document.createElement('div');
+                    div.className = `flex-shrink-0 px-4 py-1.5 rounded-full text-lg cursor-pointer transition-all border select-none ${activeId === id ? 'bg-blue-600 text-white border-blue-500' : 'bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-700'}`;
+                    div.textContent = name;
+                    div.dataset.id = id;
+                    
+                    let pressTimer;
+                    div.onmousedown = () => { pressTimer = setTimeout(() => deleteScheme(id), 800); };
+                    div.onmouseup = div.onmouseleave = () => clearTimeout(pressTimer);
+                    div.ondblclick = () => { editingSchemeId = id; renderSchemeList(); };
+                    div.onclick = () => { if(activeId !== id) switchScheme(id); };
+                    
+                    list.appendChild(div);
+                }
+            });
+            setTimeout(updateScrollIndicator, 0);
+        }
+
+        function syncCSSVariables() {
+            const root = document.getElementById('candidateWindow');
+            const style = state.style;
+            const layout = style.layout;
+            const scheme = state.preset_color_schemes[style.color_scheme] || {};
+
+            root.style.setProperty('--font-face', `"${style.font_face}"`);
+            root.style.setProperty('--font-point', `${style.font_point}px`);
+            root.style.setProperty('--label-font-point', `${style.label_font_point}px`);
+            root.style.setProperty('--comment-font-point', `${style.comment_font_point}px`);
+
+            root.style.setProperty('--l-border_width', `${layout.border_width}px`);
+            root.style.setProperty('--l-margin_x', `${layout.margin_x}px`);
+            root.style.setProperty('--l-margin_y', `${layout.margin_y}px`);
+            root.style.setProperty('--l-corner-radius', `${layout.corner_radius}px`);
+            root.style.setProperty('--l-round_corner', `${layout.round_corner}px`);
+            root.style.setProperty('--l-shadow_radius', `${layout.shadow_radius}px`);
+            root.style.setProperty('--l-shadow_offset_x', `${layout.shadow_offset_x}px`);
+            root.style.setProperty('--l-shadow_offset_y', `${layout.shadow_offset_y}px`);
+            root.style.setProperty('--l-spacing', `${layout.spacing}px`);
+            root.style.setProperty('--l-cand_margin', `${layout.candidate_spacing / 2}px`);
+            root.style.setProperty('--l-min_width', `${layout.min_width}px`);
+
+            colorMeta.forEach(m => {
+                if (m.type !== 'text') {
+                    root.style.setProperty(`--c-${m.key}`, rimeColorToCss(scheme[m.key] || 0));
+                }
+            });
+            
+            const listObj = document.getElementById('candidateList');
+            listObj.className = `rime-cand-list ${style.horizontal ? 'horizontal' : 'vertical'}`;
+        }
+
+        function renderCandidatesDOM() {
+            const list = document.getElementById('candidateList');
+            const cands = document.getElementById('testCandidates').value.split(',').map(s => s.trim()).filter(Boolean);
+            const fmt = state.style.label_format || '%s.';
+            const markTxt = state.style.mark_text || '';
+            
+            list.innerHTML = ''; // 清空
+            let markWidth = 6;
+            if (markTxt) {
+                const measure = document.createElement('span');
+                measure.style.cssText = `
+                    font-family: ${state.style.font_face};
+                    font-size: ${state.style.font_point}px;
+                    visibility: hidden;
+                    position: absolute;
+                    white-space: nowrap;
+                    line-height: 1;
+                `;
+                measure.textContent = markTxt;
+                document.body.appendChild(measure);
+                markWidth = measure.offsetWidth;
+                document.body.removeChild(measure);
+                markWidth = Math.max(markWidth, 6); 
+            }
+
+            cands.forEach((text, i) => {
+                const isHi = i === 0;
+                const div = document.createElement('div');
+                div.className = `rime-cand-item ${isHi ? 'hilited' : 'normal'}`;
+                
+                // 标记
+                const mark = document.createElement('div'); 
+                mark.className = 'rime-mark'; 
+                if (markTxt && isHi) { 
+                    mark.textContent = markTxt; 
+                    mark.style.width = 'auto'; 
+                    mark.style.background='transparent'; 
+                    mark.style.color = 'var(--c-hilited_mark_color)'; }
+                div.appendChild(mark);
+
+                // 序号
+                const label = document.createElement('span'); label.className = 'rime-label';
+                label.textContent = fmt.replace('%s', i + 1);
+                div.appendChild(label);
+
+                // 文字
+                const txtNode = document.createElement('span'); txtNode.className = 'rime-text';
+                txtNode.textContent = text;
+                div.appendChild(txtNode);
+
+                // 注解
+                if (previewShowComment) {
+                    const cmtNode = document.createElement('span'); cmtNode.className = 'rime-comment';
+                    cmtNode.textContent = 'pinyin';
+                    div.appendChild(cmtNode);
+                }
+
+                list.appendChild(div);
+            });
+        }
+
+        document.getElementById('page-layout').addEventListener('input', (e) => {
+            if (e.target.dataset.path) {
+                const path = e.target.dataset.path;
+                const val = e.target.type === 'checkbox' ? e.target.checked : 
+                            e.target.type === 'range' ? parseInt(e.target.value) : e.target.value;
+                setByPath(state, path, val);
+                
+                if (e.target.type === 'range') {
+                    e.target.parentElement.querySelector('.slider-val').textContent = val;
+                }
+                syncCSSVariables();
+                if (path === 'style.horizontal' || path.includes('format') || path.includes('mark_text')) {
+                    renderCandidatesDOM();
+                }
+            }
+        });
+
+        document.getElementById('fontFaceInput').addEventListener('input', e => {
+            state.style.font_face = e.target.value;
+            syncCSSVariables();
+        });
+
+        document.getElementById('page-layout').addEventListener('click', (e) => {
+            const btn = e.target.closest('.toggle-group-btn');
+            if (btn) {
+                const target = document.getElementById(btn.dataset.target);
+                const isHidden = target.classList.toggle('hidden');
+                btn.classList.toggle('bg-slate-700', !isHidden);
+                btn.querySelector('.emoji').textContent = isHidden ? '😶' : '😁';
+            }
+        });
+
+        document.getElementById('page-colors').addEventListener('input', e => {
+            if (e.target.dataset.colorkey) {
+                state.preset_color_schemes[state.style.color_scheme][e.target.dataset.colorkey] = e.target.value;
+            }
+        });
+        document.getElementById('page-colors').addEventListener('click', e => {
+            if (e.target.dataset.pickerkey) {
+                openColorPicker(e.target, e.target.dataset.pickerkey);
+            }
+        });
+
+        function switchScheme(id) {
+            state.style.color_scheme = id;
+            renderPanels(); syncCSSVariables();
+        }
+        function finishEditScheme(id, newName) {
+            if (newName.trim()) state.preset_color_schemes[id].name = newName.trim();
+            editingSchemeId = null; renderSchemeList();
+        }
+        function deleteScheme(id) {
+            if (Object.keys(state.preset_color_schemes).length <= 1) return alert("保留最后一个方案");
+            if (confirm(`确定删除方案 "${state.preset_color_schemes[id].name}" 吗？`)) {
+                delete state.preset_color_schemes[id];
+                if (state.style.color_scheme === id) state.style.color_scheme = Object.keys(state.preset_color_schemes)[0];
+                switchScheme(state.style.color_scheme);
+            }
+        }
+        document.getElementById('addSchemeBtn').onclick = () => {
+            const id = "skin_" + Date.now();
+            const cloned = JSON.parse(JSON.stringify(state.preset_color_schemes[state.style.color_scheme]));
+            cloned.name = "新皮肤";
+            state.preset_color_schemes[id] = cloned;
+            switchScheme(id);
+        };
+
+        function openColorPicker(btn, key) {
+            const scheme = state.preset_color_schemes[state.style.color_scheme];
+            const startColor = rimeColorToCss(scheme[key]);
+
+            if (currentPickr) currentPickr.destroyAndRemove();
+
+            currentPickr = Pickr.create({ 
+                el: btn, theme: 'monolith', default: startColor, useAsButton: true, autoReposition: true, position: 'left-start',
+                components: { preview: true, opacity: true, hue: true, interaction: { hex: true, rgba: true, input: true, save: true, cancel: true, clear: true } },
+                i18n: { 'save': '确定', 'cancel': '取消', 'clear': '重置' } 
+            });
+            
+            setTimeout(() => currentPickr.show(), 10);
+            const originalVal = scheme[key];
+
+            currentPickr.on('change', color => {
+                const rgba = color.toRGBA();
+                scheme[key] = rgbaArrayToRimeColor(rgba);
+                btn.style.background = `rgba(${rgba[0]},${rgba[1]},${rgba[2]},${rgba[3]})`;
+                syncCSSVariables();
+            }).on('save', () => { currentPickr.hide(); renderPanels(); })
+              .on('cancel', () => { scheme[key] = originalVal; syncCSSVariables(); currentPickr.hide(); renderPanels(); })
+              .on('clear', () => { scheme[key] = originalVal; syncCSSVariables(); currentPickr.hide(); renderPanels(); })
+              .on('hide', () => { setTimeout(() => { if(currentPickr) currentPickr.destroyAndRemove(); currentPickr = null; }, 100); });
+        }
+
+        document.querySelectorAll('.tab-btn[data-tab]').forEach(btn => {
+            btn.onclick = () => {
+                const tab = btn.dataset.tab;
+                document.getElementById('page-layout').classList.toggle('hidden', tab !== 'layout');
+                document.getElementById('page-colors').classList.toggle('hidden', tab !== 'colors');
+                document.querySelectorAll('.tab-btn[data-tab]').forEach(b => {
+                    b.classList.toggle('active', b.dataset.tab === tab);
+                    b.classList.toggle('text-slate-500', b.dataset.tab !== tab);
+                });
+            };
+        });
+
+        document.getElementById('testCandidates').oninput = renderCandidatesDOM;
+        
+        document.getElementById('toggleCommentBtn').onclick = function() {
+            previewShowComment = !previewShowComment;
+            this.classList.toggle('bg-blue-600', previewShowComment);
+            this.classList.toggle('text-white', previewShowComment);
+            this.classList.toggle('bg-slate-800', !previewShowComment);
+            this.classList.toggle('text-slate-300', !previewShowComment);
+            renderCandidatesDOM();
+        };
+
+        document.getElementById('scaleToggleBtn').onclick = function() {
+            currentScale = currentScale === 1 ? 2 : 1;
+            document.getElementById('candidateWindow').style.transform = `scale(${currentScale})`;
+            this.innerText = `🔎 ${currentScale}倍缩放`;
+        };
+
+        document.querySelectorAll('.bg-control-btn').forEach(btn => {
+            btn.onclick = () => {
+                const bgType = btn.dataset.bg;
+                const bd = document.getElementById('previewBackdrop');
+                bd.style.backgroundImage = '';
+                bd.className = `preview-backdrop absolute inset-0 z-0 ${bgType}`;
+            }
+        });
+        
+        document.getElementById('myBgBtn').onclick = () => {
+            if (userUploadedBgUrl) {
+                const bd = document.getElementById('previewBackdrop');
+                bd.className = 'preview-backdrop absolute inset-0 z-0';
+                bd.style.backgroundImage = `url(${userUploadedBgUrl})`;
+            } else confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+        };
+        
+        document.getElementById('bgUpload').onchange = e => {
+            if (e.target.files?.[0]) {
+                const r = new FileReader();
+                r.onload = ev => {
+                    userUploadedBgUrl = ev.target.result;
+                    document.getElementById('myBgBtn').click();
+                    document.getElementById('myBgBtn').innerHTML = '👩🏻‍🦰 我的';
+                    document.getElementById('myBgBtn').className = "px-4 py-2 rounded-full text-lg font-medium bg-cyan-500/70 hover:bg-cyan-400/70 transition-all cursor-pointer";
+                };
+                r.readAsDataURL(e.target.files[0]);
+            }
+        };
+
+        document.getElementById('fontUpload').onchange = e => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            const fontUrl = URL.createObjectURL(file);
+            const fontName = 'CustomFont_' + Date.now();
+            
+            document.getElementById('dynamic-font').textContent = `@font-face { font-family: '${fontName}'; src: url('${fontUrl}'); }`;
+            
+            document.getElementById('fontFaceInput').value = file.name;
+            state.style.font_face = fontName;
+            syncCSSVariables();
+            alert(`字体预览加载成功！`);
+            e.target.value = '';
+        };
+
+        function handleFileImport(file) {
+            if (!file) return;
+            
+            const allowedTypes = ['.yaml', '.txt', '.yml'];
+            const fileExtension = '.' + file.name.split('.').pop().toLowerCase();
+            if (!allowedTypes.includes(fileExtension)) {
+                alert(`不支持的文件类型。请选择 ${allowedTypes.join(', ')} 文件。`);
+                return;
+            }
+
+            const r = new FileReader();
+            r.onload = ev => {
+                try {
+                    let doc = jsyaml.load(ev.target.result);
+                    let target = doc.patch ? doc.patch : doc;
+                    deepMerge(state, target);
+                    renderPanels(); syncCSSVariables(); renderCandidatesDOM();
+                    alert("导入成功！");
+                    confetti({ particleCount: 150, spread: 90, origin: { y: 0.6 } });
+                } catch(err) {
+                    alert("解析失败, 请检查 YAML 格式。");
+                    console.error(err);
+                }
+            };
+            r.readAsText(file);
+        }
+
+        const importInput = document.getElementById('importFile');
+        const importLabel = importInput.parentElement;
+
+        importInput.onchange = e => {
+            const file = e.target.files?.[0];
+            if (file) {
+                handleFileImport(file);
+            }
+            e.target.value = '';
+        };
+
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            importLabel.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+            }, false);
+        });
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            importLabel.addEventListener(eventName, () => {
+                importLabel.classList.add('drag-over');
+            }, false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            importLabel.addEventListener(eventName, () => {
+                importLabel.classList.remove('drag-over');
+            }, false);
+        });
+
+        importLabel.addEventListener('drop', (e) => {
+            const droppedFiles = e.dataTransfer.files;
+            if (droppedFiles.length > 0) {
+                handleFileImport(droppedFiles[0]);
+            }
+        }, false);
+        
+
+        document.getElementById('exportBtn').onclick = () => {
+            const exportState = JSON.parse(JSON.stringify(state));
+            
+            for(let s in exportState.preset_color_schemes) {
+                for(let k in exportState.preset_color_schemes[s]) {
+                    if(typeof exportState.preset_color_schemes[s][k] === 'number') {
+                        exportState.preset_color_schemes[s][k] = formatRimeColorHex(exportState.preset_color_schemes[s][k]);
+                    }
+                }
+            }
+            
+            let yamlStr = jsyaml.dump(exportState, { lineWidth: -1 });
+            yamlStr = yamlStr.replace(/'(0x[0-9A-Fa-f]{8})'/g, "$1");
+            
+            const blob = new Blob([yamlStr], { type: 'text/yaml' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'weasel.yaml';
+            a.click();
+            URL.revokeObjectURL(a.href);
+        };
+
+        window.onload = () => {
+            renderPanels();
+            syncCSSVariables();
+            renderCandidatesDOM();
+        };
+        const schemeListEl = document.getElementById('schemeList');
+
+        schemeListEl.addEventListener('wheel', (e) => {
+            if (e.deltaY !== 0) { // 仅响应垂直滚轮事件
+                e.preventDefault();
+                schemeListEl.scrollLeft += e.deltaY;
+            }
+        });
+
+        schemeListEl.addEventListener('scroll', updateScrollIndicator);
+
+        window.addEventListener('resize', updateScrollIndicator);
+
+    </script>
+</body>
+</html>
