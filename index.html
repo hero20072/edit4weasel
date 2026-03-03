@@ -181,6 +181,7 @@
             <div id="previewBackdrop" class="preview-backdrop dark absolute inset-0 z-0"></div>
  
             <div class="absolute top-4 right-4 z-50 flex items-center gap-4 bg-slate-600/50 border border-slate-700/50 backdrop-blur-sm rounded-full p-2 text-white shadow-xl">
+                <button id="toggleHorizontalBtn" class="px-4 py-2 rounded-full text-lg font-medium bg-purple-600/70 hover:bg-purple-500 transition-all cursor-pointer">🧍🏻‍♀️ 竖排</button>
                 <button data-bg="light" class="bg-control-btn px-4 py-2 rounded-full text-lg font-medium bg-teal-600/70 hover:bg-teal-500 transition-all cursor-pointer">🌼 亮色</button>
                 <button data-bg="dark" class="bg-control-btn px-4 py-2 rounded-full text-lg font-medium bg-indigo-600/70 hover:bg-indigo-500 transition-all cursor-pointer">🌙 暗色</button>
                 <button id="myBgBtn" class="px-4 py-2 rounded-full text-lg font-medium bg-gray-500/70 hover:bg-gray-400/70 transition-all cursor-pointer">👨🏻‍🦲 我的</button>
@@ -251,8 +252,7 @@
                 { key: 'min_height', label: '最小高度', type: 'slider', min: 0, max: 500, path: 'style.layout.min_height' }, 
                 { key: 'max_width', label: '最大宽度 (0=不限)', type: 'slider', min: 0, max: 1200, path: 'style.layout.max_width' }, 
                 { key: 'max_height', label: '最大高度 (0=不限)', type: 'slider', min: 0, max: 800, path: 'style.layout.max_height' },
-            { group: "全局设置", key: 'horizontal', label: '候选项横排', type: 'checkbox', path: 'style.horizontal' }, 
-                { key: 'show_notifications', label: '显示状态通知', type: 'checkbox', path: 'show_notifications' }, 
+            { group: "全局设置", key: 'show_notifications', label: '显示状态通知', type: 'checkbox', path: 'show_notifications' },
                 { key: 'global_ascii', label: '全局西文模式', type: 'checkbox', path: 'global_ascii' }, 
                 { key: 'show_notifications_time', label: '通知显示时长(ms)', type: 'slider', min: 200, max: 5000, path: 'show_notifications_time' },
                 { key: 'antialias_mode', label: '抗锯齿模式', type: 'select', options: ['default', 'force_dword', 'cleartype', 'grayscale', 'aliased'], path: 'style.antialias_mode' }, 
@@ -650,6 +650,20 @@
             this.innerText = `🔎 ${currentScale}倍缩放`;
         };
 
+        document.getElementById('toggleHorizontalBtn').onclick = function() {
+            state.style.horizontal = !state.style.horizontal;
+            updateHorizontalBtn();
+            syncCSSVariables();
+            renderCandidatesDOM();
+        };
+
+        function updateHorizontalBtn() {
+            const btn = document.getElementById('toggleHorizontalBtn');
+            if (btn) {
+                btn.innerText = state.style.horizontal ? '🛌 横排' : '🧍🏻‍♀️ 竖排';
+            }
+        }
+
         document.querySelectorAll('.bg-control-btn').forEach(btn => {
             btn.onclick = () => {
                 const bgType = btn.dataset.bg;
@@ -711,7 +725,7 @@
                     let doc = jsyaml.load(ev.target.result);
                     let target = doc.patch ? doc.patch : doc;
                     deepMerge(state, target);
-                    renderPanels(); syncCSSVariables(); renderCandidatesDOM();
+                    renderPanels(); syncCSSVariables(); renderCandidatesDOM(); updateHorizontalBtn();
                     alert("导入成功！");
                     confetti({ particleCount: 150, spread: 90, origin: { y: 0.6 } });
                 } catch(err) {
@@ -786,6 +800,7 @@
             renderPanels();
             syncCSSVariables();
             renderCandidatesDOM();
+            updateHorizontalBtn();
         };
         const schemeListEl = document.getElementById('schemeList');
 
