@@ -138,6 +138,7 @@
             </a>
             <button id="scaleToggleBtn" class="px-4 py-2 rounded-full text-lg font-medium bg-indigo-600/70 hover:bg-indigo-500/70 transition-all cursor-pointer">🔎 2倍缩放</button>
             <button id="toggleCommentBtn" class="px-4 py-2 rounded-full text-lg font-medium bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700 transition-all cursor-pointer">📝 注解文字</button>
+            <button id="clearColorBtn" class="px-4 py-2 rounded-full text-lg font-medium bg-green-900/80 border-green-700 hover:bg-red-800 transition-all cursor-pointer">🧹 清空颜色</button>
         </div>
         <div class="flex gap-3">
             <label class="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-lg transition-all cursor-pointer border border-slate-700 text-slate-300">
@@ -644,6 +645,22 @@
             renderCandidatesDOM();
         };
 
+        document.getElementById('clearColorBtn').onclick = function() {
+                state.preset_color_schemes.default = {
+                    name: "示例", author: "无",
+                    back_color: 0xF0303032, border_color: 0xFF4F544F, text_color: 0xFFF7F7F7, comment_text_color: 0xFFFFFFFF,
+                    label_color: 0xFFFFFFFF, shadow_color: 0xC93B333B, hilited_text_color: 0xFFFFFFFF, hilited_back_color: 0xFF49403C,
+                    hilited_shadow_color: 0xC9161618, hilited_candidate_text_color: 0xFFF2F2F7, hilited_candidate_back_color: 0x0AFBF9F7,
+                    hilited_candidate_shadow_color: 0x08000000, hilited_candidate_border_color: 0x57000000, hilited_label_color: 0xFFFFFFFF,
+                    hilited_mark_color: 0x00FFFFFF, hilited_comment_text_color: 0xFFFFFFFF, candidate_text_color: 0xFFFFFFFF,
+                    candidate_back_color: 0x03888622, candidate_shadow_color: 0x002CCCC1
+                };
+                state.style.color_scheme = "default";
+                renderPanels();
+                syncCSSVariables();
+            
+        };
+        
         document.getElementById('scaleToggleBtn').onclick = function() {
             currentScale = currentScale === 1 ? 2 : 1;
             document.getElementById('candidateWindow').style.transform = `scale(${currentScale})`;
